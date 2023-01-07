@@ -1,0 +1,44 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+group 'com.hirshi001'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+    maven{ url 'https://jitpack.io' }
+}
+
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+        }
+    }
+}
+
+
+ext {
+    websocketVersion="1.5.3"
+    betterNetworkingVersion="c41eb5a0c4"
+    byteBufferVersion="ea62bf49b9"
+    javaRestApiVersion="deece2c10c"
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+
+    api "com.github.hirshi001:betternetworking:$betterNetworkingVersion"
+    api "com.github.hirshi001:bytebuffer:$byteBufferVersion"
+    api "com.github.hirshi001:javarestapi:$javaRestApiVersion"
+    implementation "org.java-websocket:Java-WebSocket:$websocketVersion"
+
+}
+
+test {
+    useJUnitPlatform()
+}
