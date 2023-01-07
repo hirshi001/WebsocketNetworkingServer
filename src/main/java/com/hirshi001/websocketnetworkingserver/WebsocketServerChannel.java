@@ -33,7 +33,7 @@ public class WebsocketServerChannel extends BaseChannel {
     protected void writeAndFlushTCP(ByteBuffer buffer) {
         byte[] bytes = new byte[buffer.readableBytes()];
         buffer.readBytes(bytes);
-        webSocket.send(java.nio.ByteBuffer.wrap(bytes));
+        webSocket.send(bytes);
     }
 
     @Override
