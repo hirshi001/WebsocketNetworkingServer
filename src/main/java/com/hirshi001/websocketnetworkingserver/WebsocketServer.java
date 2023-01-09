@@ -11,10 +11,13 @@ import com.hirshi001.restapi.RestAPI;
 import com.hirshi001.restapi.RestFuture;
 import com.hirshi001.restapi.ScheduledExec;
 import org.java_websocket.WebSocket;
+import org.java_websocket.WebSocketFactory;
+import org.java_websocket.WebSocketServerFactory;
 import org.java_websocket.framing.CloseFrame;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 
+import javax.net.ssl.SSLContext;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.Map;
@@ -27,6 +30,7 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
     private ConnectionServer connectionServer;
 
     private final Map<ServerOption, Object> options;
+    private WebSocketServerFactory webSocketServerFactory;
 
 
     /**
@@ -43,10 +47,19 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
         options = new ConcurrentHashMap<>(4);
     }
 
+    public void setWebsocketSocketServerFactory(WebSocketServerFactory webSocketServerFactory) {
+        this.webSocketServerFactory = webSocketServerFactory;
+    }
+
+    public WebSocketServer getWebSocketServer(){
+        return connectionServer;
+    }
+
     @Override
     public RestFuture<?, Server> startTCP() {
         return RestAPI.create((future, nullInput) -> {
             connectionServer = new ConnectionServer(getPort());
+            if(webSocketServerFactory!=null) connectionServer.setWebSocketFactory(webSocketServerFactory);
             connectionServer.startTCP(() -> future.taskFinished(this));
         });
     }
