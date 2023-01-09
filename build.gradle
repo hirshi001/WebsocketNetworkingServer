@@ -35,7 +35,7 @@ dependencies {
     api "com.github.hirshi001:betternetworking:$betterNetworkingVersion"
     api "com.github.hirshi001:bytebuffer:$byteBufferVersion"
     api "com.github.hirshi001:javarestapi:$javaRestApiVersion"
-    implementation "org.java-websocket:Java-WebSocket:$websocketVersion"
+    api "org.java-websocket:Java-WebSocket:$websocketVersion"
 
 }
 
