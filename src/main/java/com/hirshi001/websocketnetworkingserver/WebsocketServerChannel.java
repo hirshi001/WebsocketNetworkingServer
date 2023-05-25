@@ -13,15 +13,18 @@ import org.java_websocket.framing.CloseFrame;
 public class WebsocketServerChannel extends BaseChannel {
 
     WebSocket webSocket;
+    public ByteBuffer tcpReceiveBuffer;
 
 
     public WebsocketServerChannel(NetworkSide networkSide, ScheduledExec executor) {
         super(networkSide, executor);
+        tcpReceiveBuffer = getSide().getBufferFactory().buffer(1024);
     }
 
     public void connect(WebSocket webSocket) {
         this.webSocket = webSocket;
         webSocket.setAttachment(this);
+        onTCPConnected();
     }
 
     @Override
@@ -67,6 +70,7 @@ public class WebsocketServerChannel extends BaseChannel {
     public RestFuture<?, Channel> stopTCP() {
         return RestAPI.create(() -> {
             webSocket.close(CloseFrame.NORMAL);
+            onTCPDisconnected();
             return this;
         });
     }

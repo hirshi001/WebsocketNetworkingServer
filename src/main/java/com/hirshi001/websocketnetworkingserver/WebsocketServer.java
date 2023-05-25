@@ -1,7 +1,8 @@
 package com.hirshi001.websocketnetworkingserver;
 
 import com.hirshi001.buffer.bufferfactory.BufferFactory;
-import com.hirshi001.networking.network.channel.BaseChannel;
+import com.hirshi001.networking.network.channel.Channel;
+import com.hirshi001.networking.network.channel.ChannelSet;
 import com.hirshi001.networking.network.channel.DefaultChannelSet;
 import com.hirshi001.networking.network.server.BaseServer;
 import com.hirshi001.networking.network.server.Server;
@@ -10,27 +11,30 @@ import com.hirshi001.networking.networkdata.NetworkData;
 import com.hirshi001.restapi.RestAPI;
 import com.hirshi001.restapi.RestFuture;
 import com.hirshi001.restapi.ScheduledExec;
+import com.hirshi001.restapi.TimerAction;
 import org.java_websocket.WebSocket;
-import org.java_websocket.WebSocketFactory;
 import org.java_websocket.WebSocketServerFactory;
 import org.java_websocket.framing.CloseFrame;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 
-import javax.net.ssl.SSLContext;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 
 public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
 
-    private ScheduledExec exec;
     private ConnectionServer connectionServer;
 
-    private final Map<ServerOption, Object> options;
     private WebSocketServerFactory webSocketServerFactory;
+
+    protected DefaultChannelSet<WebsocketServerChannel> channelSet;
+    private final Object tcpLock = new Object();
+    TimerAction tcpDataCheck;
+    volatile boolean autoHandlePackets = true;
 
 
     /**
@@ -42,16 +46,15 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
      * @param port          the port to listen on
      */
     public WebsocketServer(ScheduledExec exec, NetworkData networkData, BufferFactory bufferFactory, int port) {
-        super(networkData, bufferFactory, port);
-        this.exec = exec;
-        options = new ConcurrentHashMap<>(4);
+        super(exec, networkData, bufferFactory, port);
+        channelSet = new DefaultChannelSet<>(this, ConcurrentHashMap.newKeySet());
     }
 
     public void setWebsocketSocketServerFactory(WebSocketServerFactory webSocketServerFactory) {
         this.webSocketServerFactory = webSocketServerFactory;
     }
 
-    public WebSocketServer getWebSocketServer(){
+    public WebSocketServer getWebSocketServer() {
         return connectionServer;
     }
 
@@ -59,9 +62,45 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
     public RestFuture<?, Server> startTCP() {
         return RestAPI.create((future, nullInput) -> {
             connectionServer = new ConnectionServer(getPort());
-            if(webSocketServerFactory!=null) connectionServer.setWebSocketFactory(webSocketServerFactory);
-            connectionServer.startTCP(() -> future.taskFinished(this));
+            if (webSocketServerFactory != null) connectionServer.setWebSocketFactory(webSocketServerFactory);
+            connectionServer.startTCP(() -> {
+                scheduleTCP();
+                future.taskFinished(this);
+            });
         });
+    }
+
+    private void scheduleTCP() {
+        synchronized (tcpLock) {
+            if (tcpDataCheck != null) {
+                tcpDataCheck.cancel();
+                tcpDataCheck = null;
+
+            }
+
+            Integer delay = getServerOption(ServerOption.TCP_PACKET_CHECK_INTERVAL);
+            if (delay == null) delay = 0;
+            if(delay<0) {
+                autoHandlePackets = false;
+            }
+            else if(delay==0) {
+                autoHandlePackets = true;
+            }
+            else {
+                tcpDataCheck = getExecutor().repeat(this::checkTCPPackets,  0, delay, TimeUnit.MILLISECONDS);
+                autoHandlePackets = false;
+            }
+        }
+
+    }
+
+    @Override
+    public void checkTCPPackets() {
+        for(WebsocketServerChannel channel : channelSet) {
+            if(channel.tcpReceiveBuffer.readableBytes()>0) {
+                channel.onTCPBytesReceived(channel.tcpReceiveBuffer);
+            }
+        }
     }
 
     @Override
@@ -71,8 +110,9 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
 
     @Override
     public RestFuture<?, Server> stopTCP() {
-        return RestAPI.create( ()->{
+        return RestAPI.create(() -> {
             connectionServer.stop();
+            connectionServer.isOpen = false;
             return this;
         });
     }
@@ -83,21 +123,21 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
     }
 
     @Override
-    public <T> void setServerOption(ServerOption<T> option, T value) {
-        options.put(option, value);
-        if(option==ServerOption.MAX_CLIENTS){
+    protected <T> void activateServerOption(ServerOption<T> option, T value) {
+        super.activateServerOption(option, value);
+        if (option == ServerOption.MAX_CLIENTS) {
             getClients().setMaxSize((Integer) value);
-        }
-        else if(option==ServerOption.TCP_PACKET_CHECK_INTERVAL){
-            // scheduleTCP(); nah lets not cause the thing is multithreaded
-        }else if(option==ServerOption.RECEIVE_BUFFER_SIZE){
-            // do nothing
+        } else if (option == ServerOption.TCP_PACKET_CHECK_INTERVAL) {
+            scheduleTCP();
+        } else if (option == ServerOption.RECEIVE_BUFFER_SIZE) {
+            // do nothing since websockets is tcp, no udp supported
         }
     }
 
     @Override
-    public <T> T getServerOption(ServerOption<T> option) {
-        return (T) options.get(option);
+    @SuppressWarnings("unchecked")
+    public ChannelSet<Channel> getClients() {
+        return (ChannelSet<Channel>) (Object) channelSet;
     }
 
     @Override
@@ -111,53 +151,56 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
     }
 
     @Override
-    public void close() {
-        stopTCP().perform();
-    }
-
-    @Override
-    public boolean isClosed() {
-        return false;
+    public RestFuture<?, ? extends WebsocketServer> close() {
+        return RestAPI.create(() -> {
+            try {
+                stopTCP().perform().get();
+            } catch (InterruptedException | ExecutionException ignored) {
+            }
+            return this;
+        });
     }
 
     @Override
     public boolean tcpOpen() {
-        return false;
+        return connectionServer.isOpen;
     }
+
 
     @Override
     public boolean udpOpen() {
         return false;
     }
 
+    @SuppressWarnings("unchecked")
     protected void channelConnect(WebSocket webSocket) {
         DefaultChannelSet<WebsocketServerChannel> channelSet = (DefaultChannelSet) getClients();
         InetSocketAddress address = webSocket.getRemoteSocketAddress();
         int port = address.getPort();
         WebsocketServerChannel channel;
-        synchronized (channelSet.getLock()) {
-            channel = channelSet.get(address.getAddress().getAddress(), port);
-            if (channel == null) {
-                channel = new WebsocketServerChannel(this, exec);
-                channel.connect(webSocket);
-                if (!addChannel(channel)) {
-                    webSocket.close(CloseFrame.NORMAL);
-                }
-            } else {
-                channel.connect(webSocket);
-            }
-        }
 
+        channel = channelSet.get(address.getAddress().getAddress(), port);
+        if (channel == null) {
+            channel = new WebsocketServerChannel(this, exec);
+            channel.connect(webSocket);
+            if (!addChannel(channel)) {
+                webSocket.close(CloseFrame.NORMAL);
+            }
+        } else {
+            channel.connect(webSocket);
+        }
     }
 
 
     class ConnectionServer extends WebSocketServer {
 
-        private  Runnable onStart;
+        private Runnable onStart;
+        private boolean isOpen = false;
 
         public ConnectionServer(int port) {
             super(new InetSocketAddress(port));
         }
+
 
         @Override
         public void onOpen(WebSocket conn, ClientHandshake handshake) {
@@ -176,8 +219,10 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
         @Override
         public void onMessage(WebSocket conn, ByteBuffer message) {
             WebsocketServerChannel channel = conn.getAttachment();
-            com.hirshi001.buffer.buffers.ByteBuffer buffer = getBufferFactory().wrap(message.array(), message.arrayOffset(), message.limit());
-            channel.onTCPBytesReceived(buffer);
+            channel.tcpReceiveBuffer.writeBytes(getBufferFactory().wrap(message.array(), message.arrayOffset(), message.limit()));
+            if(autoHandlePackets) {
+                channel.onTCPBytesReceived(channel.tcpReceiveBuffer);
+            }
         }
 
         @Override
@@ -185,14 +230,16 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
 
         }
 
+
+
         @Override
         public void onStart() {
-            if(onStart!=null) onStart.run();
+            if (onStart != null) onStart.run();
+            isOpen = true;
         }
 
 
-
-        public void startTCP(Runnable onStart){
+        public void startTCP(Runnable onStart) {
             this.onStart = onStart;
             this.start();
         }

@@ -23,9 +23,9 @@ publishing {
 
 ext {
     websocketVersion="1.5.3"
-    betterNetworkingVersion="c41eb5a0c4"
+    betterNetworkingVersion="af4741db0f"
     byteBufferVersion="ea62bf49b9"
-    javaRestApiVersion="deece2c10c"
+    javaRestApiVersion="2e2e4b01de"
 }
 
 dependencies {
