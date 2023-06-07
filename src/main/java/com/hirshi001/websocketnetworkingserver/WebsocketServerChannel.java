@@ -35,6 +35,7 @@ public class WebsocketServerChannel extends BaseChannel {
     protected void writeAndFlushTCP(ByteBuffer buffer) {
         java.nio.ByteBuffer nioBuffer = java.nio.ByteBuffer.wrap(buffer.array(), buffer.readerIndex(), buffer.readableBytes());
         webSocket.send(nioBuffer);
+        buffer.clear();
     }
 
     @Override
