@@ -97,11 +97,9 @@ public class WebsocketServerChannel extends BaseChannel {
 
     @Override
     public void checkTCPPackets() {
-        // do nothing
-    }
-
-    @Override
-    public void checkUDPPackets() {
-
+        if(tcpReceiveBuffer.readableBytes()>0) {
+            onTCPBytesReceived(tcpReceiveBuffer);
+        }
+        super.checkTCPPackets();
     }
 }

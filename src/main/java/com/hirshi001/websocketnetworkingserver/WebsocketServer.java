@@ -95,15 +95,6 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
     }
 
     @Override
-    public void checkTCPPackets() {
-        for(WebsocketServerChannel channel : channelSet) {
-            if(channel.tcpReceiveBuffer.readableBytes()>0) {
-                channel.onTCPBytesReceived(channel.tcpReceiveBuffer);
-            }
-        }
-    }
-
-    @Override
     public RestFuture<?, Server> startUDP() {
         return RestAPI.create(() -> this);
     }
