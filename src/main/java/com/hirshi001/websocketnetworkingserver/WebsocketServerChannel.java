@@ -14,11 +14,13 @@ public class WebsocketServerChannel extends BaseChannel {
 
     WebSocket webSocket;
     public ByteBuffer tcpReceiveBuffer;
+    byte[] sendBuffer;
 
 
     public WebsocketServerChannel(NetworkSide networkSide, ScheduledExec executor) {
         super(networkSide, executor);
         tcpReceiveBuffer = getSide().getBufferFactory().buffer(1024);
+        sendBuffer = new byte[512];
     }
 
     public void connect(WebSocket webSocket) {
@@ -34,6 +36,10 @@ public class WebsocketServerChannel extends BaseChannel {
 
     @Override
     protected void writeAndFlushTCP(ByteBuffer buffer) {
+        while(buffer.readableBytes()>=sendBuffer.length) {
+            buffer.readBytes(sendBuffer);
+            webSocket.send(sendBuffer);
+        }
         byte[] bytes = new byte[buffer.readableBytes()];
         buffer.readBytes(bytes);
         webSocket.send(bytes);
