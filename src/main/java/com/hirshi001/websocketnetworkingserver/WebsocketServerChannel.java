@@ -1,3 +1,18 @@
+/*
+ * Copyright 2023 Hrishikesh Ingle
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hirshi001.websocketnetworkingserver;
 
 import com.hirshi001.buffer.buffers.ByteBuffer;
@@ -13,7 +28,7 @@ import org.java_websocket.framing.CloseFrame;
 public class WebsocketServerChannel extends BaseChannel {
 
     WebSocket webSocket;
-    public ByteBuffer tcpReceiveBuffer;
+    public final ByteBuffer tcpReceiveBuffer;
 
     public WebsocketServerChannel(NetworkSide networkSide, ScheduledExec executor) {
         super(networkSide, executor);
@@ -27,14 +42,11 @@ public class WebsocketServerChannel extends BaseChannel {
     }
 
     @Override
-    public void onTCPBytesReceived(ByteBuffer bytes) {
-        super.onTCPBytesReceived(bytes);
-    }
-
-    @Override
     protected void writeAndFlushTCP(ByteBuffer buffer) {
-        java.nio.ByteBuffer nioBuffer = java.nio.ByteBuffer.wrap(buffer.array(), buffer.readerIndex(), buffer.readableBytes());
-        webSocket.send(nioBuffer);
+        // java.nio.ByteBuffer nioBuffer = java.nio.ByteBuffer.wrap(buffer.array(), buffer.readerIndex(), buffer.readableBytes());
+        byte[] bytes = new byte[buffer.readableBytes()];
+        buffer.readBytes(bytes);
+        webSocket.send(bytes);
         buffer.clear();
     }
 
@@ -96,9 +108,12 @@ public class WebsocketServerChannel extends BaseChannel {
 
     @Override
     public void checkTCPPackets() {
-        if(tcpReceiveBuffer.readableBytes()>0) {
-            onTCPBytesReceived(tcpReceiveBuffer);
+        synchronized (tcpReceiveBuffer) {
+            if(tcpReceiveBuffer.readableBytes()>0) {
+                onTCPBytesReceived(tcpReceiveBuffer);
+            }
         }
+
         super.checkTCPPackets();
     }
 }

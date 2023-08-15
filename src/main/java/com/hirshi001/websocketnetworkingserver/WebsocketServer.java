@@ -1,3 +1,18 @@
+/*
+ * Copyright 2023 Hrishikesh Ingle
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hirshi001.websocketnetworkingserver;
 
 import com.hirshi001.buffer.bufferfactory.BufferFactory;
@@ -6,7 +21,6 @@ import com.hirshi001.networking.network.channel.ChannelSet;
 import com.hirshi001.networking.network.channel.DefaultChannelSet;
 import com.hirshi001.networking.network.server.BaseServer;
 import com.hirshi001.networking.network.server.Server;
-import com.hirshi001.networking.network.server.ServerOption;
 import com.hirshi001.networking.networkdata.NetworkData;
 import com.hirshi001.restapi.RestAPI;
 import com.hirshi001.restapi.RestFuture;
@@ -22,9 +36,8 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 
-
+// TODO: Maybe in the future I will create a Java Websocket Client where UDP may be supported, as of now though, this library will only be used as a Server for browser websockets
 public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
 
     private ConnectionServer connectionServer;
@@ -34,7 +47,6 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
     protected DefaultChannelSet<WebsocketServerChannel> channelSet;
     private final Object tcpLock = new Object();
     TimerAction tcpDataCheck;
-    volatile boolean autoHandlePackets = true;
 
 
     /**
@@ -64,34 +76,10 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
             connectionServer = new ConnectionServer(getPort());
             if (webSocketServerFactory != null) connectionServer.setWebSocketFactory(webSocketServerFactory);
             connectionServer.startTCP(() -> {
-                scheduleTCP();
+                onTCPServerStart();
                 future.taskFinished(this);
             });
         });
-    }
-
-    private void scheduleTCP() {
-        synchronized (tcpLock) {
-            if (tcpDataCheck != null) {
-                tcpDataCheck.cancel();
-                tcpDataCheck = null;
-
-            }
-
-            Integer delay = getServerOption(ServerOption.TCP_PACKET_CHECK_INTERVAL);
-            if (delay == null) delay = 0;
-            if(delay<0) {
-                autoHandlePackets = false;
-            }
-            else if(delay==0) {
-                autoHandlePackets = true;
-            }
-            else {
-                tcpDataCheck = getExecutor().repeat(this::checkTCPPackets,  0, delay, TimeUnit.MILLISECONDS);
-                autoHandlePackets = false;
-            }
-        }
-
     }
 
     @Override
@@ -104,6 +92,7 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
         return RestAPI.create(() -> {
             connectionServer.stop();
             connectionServer.isOpen = false;
+            onTCPServerStop();
             return this;
         });
     }
@@ -111,18 +100,6 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
     @Override
     public RestFuture<?, Server> stopUDP() {
         return RestAPI.create(() -> this);
-    }
-
-    @Override
-    protected <T> void activateServerOption(ServerOption<T> option, T value) {
-        super.activateServerOption(option, value);
-        if (option == ServerOption.MAX_CLIENTS) {
-            getClients().setMaxSize((Integer) value);
-        } else if (option == ServerOption.TCP_PACKET_CHECK_INTERVAL) {
-            scheduleTCP();
-        } else if (option == ServerOption.RECEIVE_BUFFER_SIZE) {
-            // do nothing since websockets is tcp, no udp supported
-        }
     }
 
     @Override
@@ -182,6 +159,14 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
         }
     }
 
+    protected void channelDisonnect(WebSocket webSocket) {
+        DefaultChannelSet<WebsocketServerChannel> channelSet = (DefaultChannelSet) getClients();
+        InetSocketAddress address = webSocket.getRemoteSocketAddress();
+        int port = address.getPort();
+        WebsocketServerChannel channel;
+        // TODO: Implement this
+    }
+
 
     class ConnectionServer extends WebSocketServer {
 
@@ -200,6 +185,7 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
 
         @Override
         public void onClose(WebSocket conn, int code, String reason, boolean remote) {
+            channelDisonnect(conn);
         }
 
         @Override
@@ -210,9 +196,8 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
         @Override
         public void onMessage(WebSocket conn, ByteBuffer message) {
             WebsocketServerChannel channel = conn.getAttachment();
-            channel.tcpReceiveBuffer.writeBytes(getBufferFactory().wrap(message.array(), message.arrayOffset(), message.limit()));
-            if(autoHandlePackets) {
-                channel.onTCPBytesReceived(channel.tcpReceiveBuffer);
+            synchronized (channel.tcpReceiveBuffer) {
+                channel.tcpReceiveBuffer.writeBytes(getBufferFactory().wrap(message.array(), message.arrayOffset(), message.limit()));
             }
         }
 
