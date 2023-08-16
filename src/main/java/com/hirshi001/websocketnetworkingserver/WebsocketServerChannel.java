@@ -18,6 +18,7 @@ package com.hirshi001.websocketnetworkingserver;
 import com.hirshi001.buffer.buffers.ByteBuffer;
 import com.hirshi001.networking.network.channel.BaseChannel;
 import com.hirshi001.networking.network.channel.Channel;
+import com.hirshi001.networking.network.channel.ChannelOption;
 import com.hirshi001.networking.network.networkside.NetworkSide;
 import com.hirshi001.restapi.RestAPI;
 import com.hirshi001.restapi.RestFuture;
@@ -29,6 +30,7 @@ public class WebsocketServerChannel extends BaseChannel {
 
     WebSocket webSocket;
     public final ByteBuffer tcpReceiveBuffer;
+    boolean connected = false;
 
     public WebsocketServerChannel(NetworkSide networkSide, ScheduledExec executor) {
         super(networkSide, executor);
@@ -38,6 +40,7 @@ public class WebsocketServerChannel extends BaseChannel {
     public void connect(WebSocket webSocket) {
         this.webSocket = webSocket;
         webSocket.setAttachment(this);
+        connected = true;
         onTCPConnected();
     }
 
@@ -80,20 +83,26 @@ public class WebsocketServerChannel extends BaseChannel {
     @Override
     public RestFuture<?, Channel> stopTCP() {
         return RestAPI.create(() -> {
-            webSocket.close(CloseFrame.NORMAL);
-            onTCPDisconnected();
+            if(isTCPOpen()) {
+                connected = false;
+                webSocket.close(CloseFrame.NORMAL);
+                onTCPDisconnected();
+            }else if(connected){
+                connected = false;
+                onTCPDisconnected();
+            }
             return this;
         });
     }
 
     @Override
     public RestFuture<?, Channel> startUDP() {
-        return RestAPI.create(()->this);
+        return RestAPI.create(() -> this);
     }
 
     @Override
     public RestFuture<?, Channel> stopUDP() {
-        return RestAPI.create(()->this);
+        return RestAPI.create(() -> this);
     }
 
     @Override
@@ -109,11 +118,10 @@ public class WebsocketServerChannel extends BaseChannel {
     @Override
     public void checkTCPPackets() {
         synchronized (tcpReceiveBuffer) {
-            if(tcpReceiveBuffer.readableBytes()>0) {
+            if (tcpReceiveBuffer.readableBytes() > 0) {
                 onTCPBytesReceived(tcpReceiveBuffer);
             }
         }
-
         super.checkTCPPackets();
     }
 }

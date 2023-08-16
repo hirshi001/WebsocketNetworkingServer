@@ -159,12 +159,9 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
         }
     }
 
-    protected void channelDisonnect(WebSocket webSocket) {
-        DefaultChannelSet<WebsocketServerChannel> channelSet = (DefaultChannelSet) getClients();
-        InetSocketAddress address = webSocket.getRemoteSocketAddress();
-        int port = address.getPort();
-        WebsocketServerChannel channel;
-        // TODO: Implement this
+    protected void channelDisconnect(WebSocket webSocket) {
+        WebsocketServerChannel channel = webSocket.getAttachment();
+        channel.close().perform();
     }
 
 
@@ -185,7 +182,7 @@ public class WebsocketServer extends BaseServer<WebsocketServerChannel> {
 
         @Override
         public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-            channelDisonnect(conn);
+            channelDisconnect(conn);
         }
 
         @Override

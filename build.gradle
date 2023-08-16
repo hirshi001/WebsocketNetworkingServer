@@ -23,7 +23,7 @@ publishing {
 
 ext {
     websocketVersion="1.5.4"
-    betterNetworkingVersion="05cfd0e34f"
+    betterNetworkingVersion="7b10a7bf05"
     byteBufferVersion="ea62bf49b9"
     javaRestApiVersion="2e2e4b01de"
 }
